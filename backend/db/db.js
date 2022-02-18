@@ -3,9 +3,9 @@ import mongoose from "mongoose";
 
 //función para crear la bd
 // try catch para manejar errores que conocemos
-const dbBiblioMEAN = () => {
+const dbBiblioMEAN = async () => {
     try {
-       mongoose.connect(process.env.DB_CONNECTION,{
+      await mongoose.connect(process.env.DB_CONNECTION,{
            useNewUrlParser: true,
            useUnifiedTopology: true,
        });

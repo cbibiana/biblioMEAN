@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const bookShema = new mongoose.Schema({
   title: String,
-  publicationDate: Date,
+  publicationDate: String,
   author: String,
   category: String,
   language: String,
@@ -10,7 +10,7 @@ const bookShema = new mongoose.Schema({
   description: String,
   frontPageUrl: String,
   registerDate: { type: Date, default: Date.now },
-  dbStatus: true,
+  dbStatus: Boolean,
 });
 
 const book = mongoose.model("books", bookShema);
