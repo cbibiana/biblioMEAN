@@ -11,9 +11,12 @@ router.post(
   roleValidate.existingRole,
   userControllers.registerUser
 );
-
-router.get("/listUser/:name?", userControllers.listUser);
-
 router.post("/login", userControllers.login);
+router.get("/listUser/:name?", userControllers.listUser);
+router.get("/listUserAdmin/:name?", userControllers.listUserAdmin);
+router.put("/delete/:_id", userControllers.deleteUser);
+
+//router para cambiar datos, no lleva parametros :_id
+router.put("/updateUserAdmin/", userControllers.updateUserAdmn)
 
 export default router;
