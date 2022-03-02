@@ -1,18 +1,15 @@
-import user from "../models/user.js";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import moment from "moment";
+import User from "../models/user.js";
+import bcrypt from "../lib/bcrypt.js";
+import jwt from "../lib/jwt.js";
+import userService from "../services/user.js";
 
 const registerUser = async (req, res) => {
-  if (!req.body.name || !req.body.password)
-    return res.status(400).send({ message: "incomplete data" });
+  let pass = await bcrypt.hassGenerate(req.body.password);
 
-  const passHash = await bcrypt.hash(req.body.password, 10);
-
-  const userSchema = new user({
+  const userSchema = new User({
     name: req.body.name,
     email: req.body.email,
-    password: passHash,
+    password: pass,
     role: req.body.role,
     dbStatus: true,
   });
@@ -21,136 +18,125 @@ const registerUser = async (req, res) => {
 
   if (!result) res.status(500).send({ message: "failed to register user" });
 
-  try {
-    return res.status(200).json({
-      token: jwt.sign(
-        {
-          _id: result._id,
-          name: result.name,
-          role: result.role,
-          iat: moment().unix(),
-        },
-        process.env.SK_JWT
-      ),
-    });
-  } catch (e) {
-    return res.status(500).send({ message: "Register error" });
-  }
-};
-
-//en esta funcion el Admin puede ver todo lo que esta en la bd incluyendo si esta activo e innactivo
-const listUserAdmin = async (req, res) => {
-  let users = await user
-    .find({ name: new RegExp(req.params["name"]) })
-    .populate("role")
-    .exec();
-
-  if (users.length === 0)
-    return res.status(400).send({ message: "No serch results" });
-
-  return res.status(200).send({ users });
+  const token = await jwt.generateToken(result);
+  return !token
+    ? res.status(500).send({ message: "Failed to register user" })
+    : res.status(200).send({ token });
 };
 
 const listUser = async (req, res) => {
-  let users = await user
-    .find({
-      $and: [{ name: new RegExp(req.params["name"]) }, { dbStatus: "true" }],
-    })
-    .populate("role")
-    .exec();
-
-  if (users.length === 0)
-    return res.status(400).send({ message: "No serch results" });
-
-  return res.status(200).send({ users });
+  const userList = await User.find(
+    {
+      $and: [
+        { name: new RegExp(req.params["name"], "i") },
+        { dbStatus: "true" },
+      ],
+    },
+    { _id: 0, name: 1 }
+  );
+  return userList.length === 0
+    ? res.status(400).send({ message: "Empty users list" })
+    : res.status(200).send({ userList });
 };
 
-//Para crear el login
-const login = async (req, res) => {
-  // validar si se encuentra
-  const userLogin = await user.findOne({ email: req.body.email });
+const listAllUser = async (req, res) => {
+  const userList = await User.find({
+    $and: [{ name: new RegExp(req.params["name"], "i") }],
+  })
+    .populate("role")
+    .exec();
+  return userList.length === 0
+    ? res.status(400).send({ message: "Empty users list" })
+    : res.status(200).send({ userList });
+};
 
-  //si no encuentra nada
-  if (!userLogin)
-    return res.status(400).send({ message: "Wrong email or password" });
+const findUser = async (req, res) => {
+  const userfind = await User.findById({ _id: req.params["_id"] })
+    .populate("role")
+    .exec();
+  return !userfind
+    ? res.status(400).send({ message: "No search results" })
+    : res.status(200).send({ userfind });
+};
 
-  //si no esta en la bd, cuando la bd es true
-  if (!userLogin.dbStatus)
-    return res.status(400).send({ message: "User no Found" });
+const getUserRole = async (req, res) => {
+  let userRole = await User.findOne({ email: req.params.email })
+    .populate("role")
+    .exec();
+  if (!userRole) return res.status(400).send({ message: "No search results" });
 
-  //el usuario ingresa el password y nosotros lo encriptamos entonces toca hacer algo para que lo acepte
-  const passHash = await bcrypt.compare(req.body.password, userLogin.password);
-  if (!passHash)
-    return res.status(400).send({ message: "Wrond email or password" });
+  userRole = userRole.role.name;
+  return res.status(200).send({ userRole });
+};
 
-  //enviar el json webtoken
-  try {
-    return res.status(200).json({
-      token: jwt.sign(
-        {
-          _id: userLogin._id,
-          name: userLogin.name,
-          role: userLogin.role,
-          //codigo iat
-          iat: moment().unix(),
-        },
-        process.env.SK_JWT
-      ),
-    });
-  } catch (e) {
-    return res.status(500).send({ message: "Login error" });
+const updateUser = async (req, res) => {
+  const searchUser = await User.findOne({ email: req.body.email });
+
+  let pass = searchUser.password;
+  let role = searchUser.role;
+
+  if (req.body.password) {
+    const passHash = await bcrypt.hassCompare(req.body.password, pass);
+    if (!passHash) pass = await bcrypt.hassGenerate(req.body.password);
   }
+
+  if (req.user.roleName === "admin") role = req.body.role;
+
+  let changes = await userService.isChanges(req.body, pass);
+
+  if (changes)
+    return res.status(400).send({ mesagge: "you didn't make any changes" });
+
+  const userUpdated = await User.findByIdAndUpdate(req.body._id, {
+    name: req.body.name,
+    password: pass,
+    role: role,
+  });
+
+  return !userUpdated
+    ? res.status(400).send({ message: "Error editing user" })
+    : res.status(200).send({ message: "User updated" });
 };
 
 //funcion para editar un campo de  cualquiera de un usuario de la base de datos(desactiva al usuario)
 const deleteUser = async (req, res) => {
-  if (!req.params["_id"])
-    return res.status(400).send({ message: "Incomplete data" });
-
-  //aqui me busca el id y me actualiza el dbStatus
-  const users = await user.findByIdAndUpdate(req.params["_id"], {
-    dbStatus: "false",
+  const userDeleted = await User.findByIdAndUpdate(req.params["_id"], {
+    dbStatus: false,
   });
-
-  return !users
-    ? res.status(400).send({ message: "Error deleting user" })
+  return !userDeleted
+    ? res.status(400).send({ message: "User no found" })
     : res.status(200).send({ message: "User deleted" });
 };
+//Para crear el login
+const login = async (req, res) => {
+  if (!req.body.email || !req.body.password)
+    return res.status(400).send({ message: "Incomplete data" });
 
-//actualizar editando cualquier campo del usuario pero queda activo
+  const userLogin = await User.findOne({ email: req.body.email });
+  if (!userLogin)
+    return res.status(400).send({ message: "Wrong email or password" });
 
-const updateUserAdmn = async (req, res) => {
-  if(!req.body._id || !req.body.name || !req.body.role || !req.body.email)
-  return res.status(400).send({message:"Incompleta date"});
+  let pass = await bcrypt.hassCompare(req.body.password, userLogin.password);
 
-//variable passw para guardar el pasword nuevo o el que me trajo el findUser
-let passw = "";
+  if (!pass)
+    return res.status(400).send({ message: "Wrong email or password" });
 
-if (!req.body.password) {
-  const findUser = await user.findOne({ email:req.body.email});
-  passw = findUser.password;
-} else {
- passw = await bcrypt.hash(req.body.password,10); 
-}
+  if (!userLogin.dbStatus)
+    return res.status(400).send({ message: "Wrong email or password" });
 
-//se actualiza los nuevos datos en la BD
-const editUser = await user.findByIdAndUpdate (req.body._id, {
-  name: req.body.name,
-  password: passw,
-  role: req.body.role,
-});
-
-if(!editUser) return res.status(500).send({message:"Error editing user"});
-return res.status(200).send({message:"User update"});
-
-
-
-
-
-
-
-
+  const token = await jwt.generateToken(userLogin);
+  return !token
+    ? res.status(500).send({ message: "Login error" })
+    : res.status(200).send({ token });
 };
 
-
-export default { registerUser, listUser, listUserAdmin, login, deleteUser, updateUserAdmn };
+export default {
+  registerUser,
+  listUser,
+  listAllUser,
+  findUser,
+  updateUser,
+  deleteUser,
+  login,
+  getUserRole,
+};

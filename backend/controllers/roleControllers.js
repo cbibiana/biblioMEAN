@@ -1,4 +1,4 @@
-import role from "../models/role.js";
+import Role from "../models/role.js";
 
 const registerRole = async (req, res) => {
   if (!req.body.name || !req.body.description)
@@ -17,42 +17,45 @@ const registerRole = async (req, res) => {
 };
 
 const listRole = async (req, res) => {
-  let roles = await role.find();
-
-  if (roles.length === 0)
-    return res.status(400).send({ message: "No serch resuls" });
-
-  return res.status(200).send({ roles });
+  const roles = await Role.find({
+    name: new RegExp(req.params["name"]),
+  });
+  return roles.length == 0
+    ? res.status(400).send({ message: "Empty role list" })
+    : res.status(200).send({ roles });
 };
 
 //Funcion para desactivasr un rol
 const deleteRole = async (req, res) => {
-  if (!req.params["_id"])
-    return res.status(400).send({ message: "Incomplete data" });
-
-  //aqui me busca el id y me actualiza el dbStatus
-  const roles = await role.findByIdAndUpdate(req.params["_id"], {
-    dbStatus: "false",
-  });
-
-  return !roles
-    ? res.status(400).send({ message: "Error deleting role" })
-    : res.status(200).send({ message: "role deleted" });
+  const deletedRole = await Role.findByIdAndUpdate(
+    { _id: req.params["_id"] },
+    { dbStatus: false }
+  );
+  return !deletedRole
+    ? res.status(400).send({ message: "Role no found" })
+    : res.status(200).send({ message: "Role deleted" });
 };
 
 // Funcion para modificar cualquier dato de los roles
 
 const updateRole = async (req, res) => {
-  if (!req.body.name || !req.body.description)
-  return res.status(400).send({message:"Incomplete data"});
+  if (!req.body.description)
+    return res.status(400).send({ message: "Incomplete data" });
 
-  const editRole = await role.findByIdAndUpdate(req.body._id, {
-    name: req.body.name,
+  const editedRole = await Role.findByIdAndUpdate(req.body._id, {
     description: req.body.description,
   });
 
-  if(!editRole) return res.status(500).send({message:"Role update"});
-  return res.status(200).send({message:"Role update"});
+  return !editedRole
+    ? res.status(500).send({ message: "Failed to editing role" })
+    : res.status(200).send({ message: "Role updated" });
 };
 
-export default { registerRole, listRole, deleteRole, updateRole };
+const getRoleById = async (req, res) => {
+  const role = await Role.findById({ _id: req.params["_id"] });
+  return !role
+    ? res.status(400).send({ message: "No search results" })
+    : res.status(200).send({ role });
+};
+
+export default { registerRole, listRole, deleteRole, updateRole, getRoleById };

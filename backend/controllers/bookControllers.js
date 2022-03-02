@@ -1,6 +1,6 @@
-import book from "../models/book.js";
+import Book from "../models/book.js";
 
-const registerBook = async (req, res) => {
+const saveBook = async (req, res) => {
   if (
     !req.body.title ||
     !req.body.publicationDate ||
@@ -33,12 +33,10 @@ const registerBook = async (req, res) => {
 };
 
 const listBook = async (req, res) => {
-  let books = await book.find();
-
-  if (books.length === 0)
-    return res.status(400).send({ message: "No serch result" });
-
-  return res.status(200).send({ books });
+  const bookList = await Book.find({ userId: req.user._id });
+  return bookList.length === 0
+    ? res.status(400).send({ message: "You have no assigned books" })
+    : res.status(200).send({ bookList });
 };
 
 //funcion para editar un campo de  cualquiera de un usuario de la base de datos(desactiva al usuario)
@@ -47,7 +45,7 @@ const deleteBook = async (req, res) => {
     return res.status(400).send({ message: "Incomplete data" });
 
   //aqui me busca el id y me actualiza el dbStatus
-  const books = await book.findByIdAndUpdate(req.params["_id"], {
+  const books = await Book.findByIdAndUpdate(req.params["_id"], {
     dbStatus: "false",
   });
 
@@ -71,7 +69,7 @@ const updateBook = async (req, res) => {
     return res.status(400).send({ message: "Incomplete data" });
 
   //se actualiza los nuevos datos en la bd
-  const editBook = await book.findByIdAndUpdate(req.body._id, {
+  const editBook = await Book.findByIdAndUpdate(req.body._id, {
     title: req.body.title,
     publicationDate: req.body.publicationDate,
     author: req.body.author,
@@ -82,8 +80,9 @@ const updateBook = async (req, res) => {
     frontPageUrl: req.body.frontPageUrl,
   });
 
-  if (!editBook) return res.status(500).send({ message: "Error editind book" });
-  return res.status(200).send({ message: "Book update" });
+  return !editBook
+    ? res.status(500).send({ message: "Error editind book" })
+    : res.status(200).send({ message: "Book update" });
 };
 
-export default { registerBook, listBook, deleteBook, updateBook };
+export default { saveBook, listBook, deleteBook, updateBook };
